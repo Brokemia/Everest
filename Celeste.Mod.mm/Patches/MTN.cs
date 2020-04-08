@@ -2,6 +2,7 @@
 
 using Celeste.Mod;
 using Celeste.Mod.Meta;
+using Microsoft.Xna.Framework;
 using Monocle;
 using System;
 using System.Collections.Generic;
@@ -19,12 +20,10 @@ namespace Celeste {
         public static void UnloadData() {
             if (MTN.DataLoaded) {
                 foreach (KeyValuePair<string, MountainResources> kvp in MTNExt.MountainMappings) {
-                    kvp.Value.MountainTerrain?.Dispose();
-                    kvp.Value.MountainTerrain = null;
-                    kvp.Value.MountainBuildings?.Dispose();
-                    kvp.Value.MountainBuildings = null;
-                    kvp.Value.MountainCoreWall?.Dispose();
-                    kvp.Value.MountainCoreWall = null;
+                    foreach(KeyValuePair<string, ObjModel> modelKvp in kvp.Value.MountainModels) {
+                        modelKvp.Value.Dispose();
+                    }
+                    kvp.Value.MountainModels = null;
                 }
             }
             orig_UnloadData();
@@ -33,21 +32,17 @@ namespace Celeste {
     }
 
     public class MountainResources {
-        public ObjModel MountainTerrain;
+        // The key is the name of the model (the file name of the .obj with no extension)
+        public Dictionary<string, ObjModel> MountainModels;
 
-        public ObjModel MountainBuildings;
-
-        public ObjModel MountainCoreWall;
-
-        public VirtualTexture[] MountainTerrainTextures;
-
-        public VirtualTexture[] MountainBuildingTextures;
-
-        public VirtualTexture[] MountainSkyboxTextures;
+        // The key here matches up with the one for the models
+        public Dictionary<string, VirtualTexture[]> MountainTextures;
 
         public VirtualTexture MountainFogTexture;
 
-        public MountainState[] MountainStates = new MountainState[4];
+        public Color[] FogColors;
+
+        public Skybox[] Skyboxes;
     }
 
     public static class MTNExt {
@@ -76,18 +71,13 @@ namespace Celeste {
                                 MountainMappings.Add(kvp.Key, resources);
                             }
 
-                            if (Everest.Content.TryGet(Path.Combine(meta.Mountain.MountainModelDirectory, "mountain"), out ModAsset mountain)) {
-                                resources.MountainTerrain = ObjModelExt.CreateFromStream(mountain.Stream, Path.Combine(meta.Mountain.MountainModelDirectory, "mountain.obj"));
-                            }
+                            resources.MountainModels = new Dictionary<string, ObjModel>();
 
-                            if (Everest.Content.TryGet(Path.Combine(meta.Mountain.MountainModelDirectory, "buildings"), out ModAsset buildings)) {
-                                resources.MountainBuildings = ObjModelExt.CreateFromStream(buildings.Stream, Path.Combine(meta.Mountain.MountainModelDirectory, "buildings.obj"));
+                            // Try to use every model in the specified folder
+                            // Make sure not to use the folder itself
+                            foreach (KeyValuePair<string, ModAsset> modelKvp in Everest.Content.Map.Where((asset) => !asset.Key.Replace('\\', '/').Equals(meta.Mountain.MountainModelDirectory) && asset.Key.Replace('\\', '/').StartsWith(meta.Mountain.MountainModelDirectory))) {
+                                resources.MountainModels.Add(Path.GetFileName(modelKvp.Key), ObjModelExt.CreateFromStream(modelKvp.Value.Stream, modelKvp.Key + ".obj"));
                             }
-
-                            if (Everest.Content.TryGet(Path.Combine(meta.Mountain.MountainModelDirectory, "mountain_wall"), out ModAsset coreWall)) {
-                                resources.MountainCoreWall = ObjModelExt.CreateFromStream(coreWall.Stream, Path.Combine(meta.Mountain.MountainModelDirectory, "mountain_wall.obj"));
-                            }
-
                         }
                     }
                 }
@@ -113,29 +103,43 @@ namespace Celeste {
                                 MountainMappings.Add(kvp.Key, resources);
                             }
 
-                            resources.MountainTerrainTextures = new VirtualTexture[3];
-                            resources.MountainBuildingTextures = new VirtualTexture[3];
-                            resources.MountainSkyboxTextures = new VirtualTexture[3];
+                            resources.MountainTextures = new Dictionary<string, VirtualTexture[]>();
+
+                            foreach (KeyValuePair<string, ObjModel> modelKvp in resources.MountainModels) {
+                                VirtualTexture[] textures = new VirtualTexture[3];
+                                for (int i = 0; i < 3; i++) {
+                                    if (MTN.Mountain.Has(Path.Combine(meta.Mountain.MountainTextureDirectory, modelKvp.Key + "_" + i).Replace('\\', '/'))) {
+                                        textures[i] = MTN.Mountain[Path.Combine(meta.Mountain.MountainTextureDirectory, modelKvp.Key + "_" + i).Replace('\\', '/')].Texture;
+                                    }
+                                }
+                                resources.MountainTextures[modelKvp.Key] = textures;
+                            }
+
+                            resources.MountainTextures["skybox"] = new VirtualTexture[3];
+                            resources.Skyboxes = new Skybox[3];
+                            // Skybox is handled separately
                             for (int i = 0; i < 3; i++) {
                                 if (MTN.Mountain.Has(Path.Combine(meta.Mountain.MountainTextureDirectory, "skybox_" + i).Replace('\\', '/'))) {
-                                    resources.MountainSkyboxTextures[i] = MTN.Mountain[Path.Combine(meta.Mountain.MountainTextureDirectory, "skybox_" + i).Replace('\\', '/')].Texture;
-                                }
-                                if (MTN.Mountain.Has(Path.Combine(meta.Mountain.MountainTextureDirectory, "mountain_" + i).Replace('\\', '/'))) {
-                                    resources.MountainTerrainTextures[i] = MTN.Mountain[Path.Combine(meta.Mountain.MountainTextureDirectory, "mountain_" + i).Replace('\\', '/')].Texture;
-                                }
-                                if (MTN.Mountain.Has(Path.Combine(meta.Mountain.MountainTextureDirectory, "buildings_" + i).Replace('\\', '/'))) {
-                                    resources.MountainBuildingTextures[i] = MTN.Mountain[Path.Combine(meta.Mountain.MountainTextureDirectory, "buildings_" + i).Replace('\\', '/')].Texture;
+                                    VirtualTexture texture = MTN.Mountain[Path.Combine(meta.Mountain.MountainTextureDirectory, "skybox_" + i).Replace('\\', '/')].Texture;
+                                    resources.MountainTextures["skybox"][i] = texture;
+                                    if (texture != null) {
+                                        resources.Skyboxes[i] = new Skybox(texture);
+                                    }
                                 }
                             }
+
+                            // Fog is handled separately
                             if (MTN.Mountain.Has(Path.Combine(meta.Mountain.MountainTextureDirectory, "fog").Replace('\\', '/'))) {
                                 resources.MountainFogTexture = MTN.Mountain[Path.Combine(meta.Mountain.MountainTextureDirectory, "fog").Replace('\\', '/')].Texture;
                             }
 
-                            // Use the default textures if no custom ones were loaded
-                            resources.MountainStates[0] = new MountainState(resources.MountainTerrainTextures[0] ?? MTN.MountainTerrainTextures[0], resources.MountainBuildingTextures[0] ?? MTN.MountainBuildingTextures[0], resources.MountainSkyboxTextures[0] ?? MTN.MountainSkyboxTextures[0], Calc.HexToColor("010817"));
-                            resources.MountainStates[1] = new MountainState(resources.MountainTerrainTextures[1] ?? MTN.MountainTerrainTextures[1], resources.MountainBuildingTextures[1] ?? MTN.MountainBuildingTextures[1], resources.MountainSkyboxTextures[1] ?? MTN.MountainSkyboxTextures[1], Calc.HexToColor("13203E"));
-                            resources.MountainStates[2] = new MountainState(resources.MountainTerrainTextures[2] ?? MTN.MountainTerrainTextures[2], resources.MountainBuildingTextures[2] ?? MTN.MountainBuildingTextures[2], resources.MountainSkyboxTextures[2] ?? MTN.MountainSkyboxTextures[2], Calc.HexToColor("281A35"));
-                            resources.MountainStates[3] = new MountainState(resources.MountainTerrainTextures[0] ?? MTN.MountainTerrainTextures[0], resources.MountainBuildingTextures[0] ?? MTN.MountainBuildingTextures[0], resources.MountainSkyboxTextures[0] ?? MTN.MountainSkyboxTextures[0], Calc.HexToColor("010817"));
+                            resources.FogColors = new Color[4];
+
+                            // Fog colors currently cannot be configured
+                            resources.FogColors[0] = Calc.HexToColor("010817");
+                            resources.FogColors[1] = Calc.HexToColor("13203E");
+                            resources.FogColors[2] = Calc.HexToColor("281A35");
+                            resources.FogColors[3] = Calc.HexToColor("010817");
                         }
                     }
                 }

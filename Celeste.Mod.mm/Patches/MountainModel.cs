@@ -51,7 +51,7 @@ namespace Celeste {
                 if (asset != null && (meta = asset.GetMeta<MapMeta>()) != null && meta.Mountain != null && !(string.IsNullOrEmpty(meta.Mountain.MountainModelDirectory) && string.IsNullOrEmpty(meta.Mountain.MountainTextureDirectory))) {
                     MountainResources resources = MTNExt.MountainMappings[path];
                     customFog.Rotate((0f - Engine.DeltaTime) * 0.01f);
-                    customFog.TopColor = (customFog.BotColor = Color.Lerp((resources.MountainStates?[currState] ?? mountainStates[currState]).FogColor, (resources.MountainStates?[nextState] ?? mountainStates[nextState]).FogColor, easeState));
+                    customFog.TopColor = (customFog.BotColor = Color.Lerp(resources.FogColors?[currState] ?? mountainStates[currState].FogColor, resources.FogColors?[nextState] ?? mountainStates[nextState].FogColor, easeState));
                     customFog2.Rotate((0f - Engine.DeltaTime) * 0.01f);
                     customFog2.TopColor = (customFog2.BotColor = Color.White * 0.3f * NearFogAlpha);
                 }
@@ -126,10 +126,10 @@ namespace Celeste {
                     Matrix matrix4 = Matrix.CreateTranslation(0f, 5f - Camera.Position.Y * 1.1f, 0f) * Matrix.CreateFromQuaternion(rotation) * matrix;
 
                     if (currState == nextState) {
-                        (resources.MountainStates?[currState] ?? mountainStates[currState]).Skybox.Draw(matrix4, Color.White);
+                        (resources.Skyboxes?[currState] ?? mountainStates[currState].Skybox).Draw(matrix4, Color.White);
                     } else {
-                        (resources.MountainStates?[currState] ?? mountainStates[currState]).Skybox.Draw(matrix4, Color.White);
-                        (resources.MountainStates?[currState] ?? mountainStates[currState]).Skybox.Draw(matrix4, Color.White * easeState);
+                        (resources.Skyboxes?[currState] ?? mountainStates[currState].Skybox).Draw(matrix4, Color.White);
+                        (resources.Skyboxes?[nextState] ?? mountainStates[nextState].Skybox).Draw(matrix4, Color.White * easeState);
                     }
                     if (currState != nextState) {
                         GFX.FxMountain.Parameters["ease"].SetValue(easeState);
@@ -142,23 +142,34 @@ namespace Celeste {
                     Engine.Graphics.GraphicsDevice.RasterizerState = MountainRasterizer;
                     GFX.FxMountain.Parameters["WorldViewProj"].SetValue(matrix3);
                     GFX.FxMountain.Parameters["fog"].SetValue(customFog.TopColor.ToVector3());
-                    Engine.Graphics.GraphicsDevice.Textures[0] = (resources.MountainStates?[currState] ?? mountainStates[currState]).TerrainTexture.Texture;
-                    Engine.Graphics.GraphicsDevice.SamplerStates[0] = SamplerState.LinearClamp;
-                    if (currState != nextState) {
-                        Engine.Graphics.GraphicsDevice.Textures[1] = (resources.MountainStates?[nextState] ?? mountainStates[nextState]).TerrainTexture.Texture;
-                        Engine.Graphics.GraphicsDevice.SamplerStates[1] = SamplerState.LinearClamp;
+                    foreach(KeyValuePair<string, ObjModel> kvp in resources.MountainModels) {
+                        // Special rules for core wall
+                        Console.WriteLine(kvp.Key);
+                        if(kvp.Key.Equals("mountain_wall")) {
+                            GFX.FxMountain.Parameters["WorldViewProj"].SetValue(Matrix.CreateTranslation(CoreWallPosition) * matrix3);
+                            if (currState != nextState) {
+                                Engine.Graphics.GraphicsDevice.SamplerStates[1] = SamplerState.LinearClamp;
+                            }
+                            // Use a mountain texture if it exists
+                            // Otherwise, leave whatever the previous texture was
+                            if (resources.MountainTextures.TryGetValue("mountain", out VirtualTexture[] mountainTextures) && mountainTextures[currState] != null) {
+                                Engine.Graphics.GraphicsDevice.Textures[0] = mountainTextures[currState].Texture;
+                                if(currState != nextState && mountainTextures[nextState] != null) {
+                                    Engine.Graphics.GraphicsDevice.Textures[1] = mountainTextures[nextState].Texture;
+                                }
+                            }
+                        } else {
+                            GFX.FxMountain.Parameters["WorldViewProj"].SetValue(matrix3);
+                            Engine.Graphics.GraphicsDevice.Textures[0] = (resources.MountainTextures?[kvp.Key]?[currState] ?? mountainStates[currState].TerrainTexture).Texture;
+                            if (currState != nextState) {
+                                Engine.Graphics.GraphicsDevice.Textures[1] = (resources.MountainTextures?[kvp.Key]?[nextState] ?? mountainStates[nextState].TerrainTexture).Texture;
+                                Engine.Graphics.GraphicsDevice.SamplerStates[1] = SamplerState.LinearClamp;
+                            }
+                        }
+
+                        Engine.Graphics.GraphicsDevice.SamplerStates[0] = SamplerState.LinearClamp;
+                        kvp.Value.Draw(GFX.FxMountain);
                     }
-                    (resources.MountainTerrain ?? MTN.MountainTerrain).Draw(GFX.FxMountain);
-                    GFX.FxMountain.Parameters["WorldViewProj"].SetValue(Matrix.CreateTranslation(CoreWallPosition) * matrix3);
-                    (resources.MountainCoreWall ?? MTN.MountainCoreWall).Draw(GFX.FxMountain);
-                    GFX.FxMountain.Parameters["WorldViewProj"].SetValue(matrix3);
-                    Engine.Graphics.GraphicsDevice.Textures[0] = (resources.MountainStates?[currState] ?? mountainStates[currState]).BuildingsTexture.Texture;
-                    Engine.Graphics.GraphicsDevice.SamplerStates[0] = SamplerState.LinearClamp;
-                    if (currState != nextState) {
-                        Engine.Graphics.GraphicsDevice.Textures[1] = (resources.MountainStates?[nextState] ?? mountainStates[nextState]).BuildingsTexture.Texture;
-                        Engine.Graphics.GraphicsDevice.SamplerStates[1] = SamplerState.LinearClamp;
-                    }
-                    (resources.MountainBuildings ?? MTN.MountainBuildings).Draw(GFX.FxMountain);
                     customFog.Draw(matrix3);
 
                     DrawBillboards(matrix3, scene.Tracker.GetComponents<Billboard>());

@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Text.RegularExpressions;
 
 namespace Celeste {
     class patch_ObjModel : ObjModel {
@@ -55,8 +56,9 @@ namespace Celeste {
             } else {
                 using (StreamReader streamReader = new StreamReader(stream)) {
                     string text;
+                    // Regex to remove extra spaces added by some programs
                     while ((text = streamReader.ReadLine()) != null) {
-                        string[] array = text.Split(' ');
+                        string[] array = Regex.Replace(text, @"[ ]+", " ").Split(' ');
                         if (array.Length != 0) {
                             string a = array[0];
                             if (a == "o") {

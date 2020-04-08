@@ -397,8 +397,8 @@ namespace Celeste {
 
             // Load custom mountains
             // This needs to be done after areas are loaded because it depends on the MapMeta
-            MTNExt.LoadMod();
             MTNExt.LoadModData();
+            MTNExt.LoadMod();
         }
 
         private static int AreaComparison(AreaData a, AreaData b) {
